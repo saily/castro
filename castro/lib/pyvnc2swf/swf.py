@@ -25,13 +25,8 @@
 
 import sys, zlib
 from struct import pack, unpack
-try:
-  from cStringIO import StringIO
-except ImportError:
-  from StringIO import StringIO
-stderr = sys.stderr
-lowerbound = max
-upperbound = min
+from io import StringIO
+from .util import stderr, upperbound, lowerbound
 
 CURSOR_DEPTH = 65535
 
@@ -39,7 +34,7 @@ CURSOR_DEPTH = 65535
 ##  DataParser
 ##
 class DataParser:
-  
+
   """
   Low-level byte sequence parser. Inheritable.
   """
@@ -49,32 +44,30 @@ class DataParser:
     self.buff = 0
     self.bpos = 8
     self.debug = debug
-    return
 
   def open(self, fname):
-    self.fp = file(fname, 'rb')
-    return
-    
+    self.fp = open(fname, 'rb')
+
   # fixed bytes read
-  
+
   def read(self, n):
     x = self.fp.read(n)
     if len(x) != n:
       raise EOFError
     return x
-  
+
   def readui8(self):
     return ord(self.read(1))
   def readsi8(self):
     return unpack('<b', self.read(1))[0]
-  
+
   def readui16(self):
     return unpack('<H', self.read(2))[0]
   def readub16(self):
     return unpack('>H', self.read(2))[0]
   def readsi16(self):
     return unpack('<h', self.read(2))[0]
-  
+
   def readub24(self):
     return unpack('>L', '\x00'+self.read(3))[0]
 
@@ -92,8 +85,7 @@ class DataParser:
 
   def setbuff(self, bpos=8, buff=0):
     (self.bpos, self.buff) = (bpos, buff)
-    return
-  
+
   def readbits(self, bits, signed=False):
     if bits == 0: return 0
     bits0 = bits
@@ -118,7 +110,7 @@ class DataParser:
     if signed and (v>>(bits0-1)):
       v -= (1<<bits0)
     return v
-  
+
   # variable length structure
 
   def readstring(self):
@@ -133,22 +125,21 @@ class DataParser:
 ##  SWFParser
 ##
 class SWFParser(DataParser):
-  
+
   """
   Low-level SWF parser.
   It invokes do_tagXXX method for every SWF tag.
   """
-  
+
   def __init__(self, debug=0):
     DataParser.__init__(self, debug)
     self.framepos = []
-    return
 
   def open(self, fname, header_only=False):
     DataParser.open(self, fname)
     self.parse_header()
     if header_only: return
-    print >>stderr, 'Scanning source swf file: %s...' % fname
+    stderr('Scanning source swf file: %s...' % fname)
     pos = self.fp.tell()
     try:
       while 1:
@@ -165,7 +156,7 @@ class SWFParser(DataParser):
           getattr(self, name)(tag, length)
         if self.debug:
           data = self.fp.read(length)
-          print >>stderr, 'tag=%d, data=%r' % (tag, data)
+          stderr('tag=%d, data=%r' % (tag, data))
         else:
           self.fp.seek(pos0+length)
         if tag == 1:
@@ -174,7 +165,6 @@ class SWFParser(DataParser):
           pos = self.fp.tell()
     except EOFError:
       pass
-    return
 
   def parse_header(self):
     (F,W,S,V) = self.read(4)
@@ -184,22 +174,21 @@ class SWFParser(DataParser):
       self.encoding = 'utf-8'
     self.totallen = self.readui32()
     if self.debug:
-      print >>stderr, 'Header:', (F,W,S,self.swf_version,self.totallen)
+      stderr('Header:', (F,W,S,self.swf_version,self.totallen))
     if F == 'C':
       # compressed
       x = zlib.decompress(self.fp.read())
       self.fp = StringIO(x)
     self.rect = self.readrect()
-    self.framerate = self.readui16()/256.0
+    self.framerate = self.readui16()/256
     self.framecount = self.readui16()
     if self.debug:
-      print >>stderr, 'Header:', self.rect, self.framerate, self.framecount
-    return
+      stderr('Header:', self.rect, self.framerate, self.framecount)
 
   def parse_frame(self, n):
     self.fp.seek(self.framepos[n])
     if self.debug:
-      print >>stderr, 'seek:', n, self.framepos[n]
+      stderr('seek:', n, self.framepos[n])
     try:
       while 1:
         x = self.readui16()
@@ -219,7 +208,6 @@ class SWFParser(DataParser):
         if tag == 1: break
     except EOFError:
       pass
-    return
 
   def parse_tag1(self):
     x = self.readui16()
@@ -236,16 +224,13 @@ class SWFParser(DataParser):
     else:
       self.do_unknown_tag(tag, length)
     self.fp.seek(pos0+length)
-    return
 
   def do_unknown_tag(self, tag, length):
     if self.debug:
-      print >>stderr, 'unknown tag: %d, length=%d' % (tag, length)
-    return
+      stderr('unknown tag: %d, length=%d' % (tag, length))
 
   def do_tag0(self, tag, length):
-    # end
-    return
+    pass
 
   def readrect(self):
     '''(xmin, xmax, ymin, ymax) NOT width and height!'''
@@ -260,13 +245,13 @@ class SWFParser(DataParser):
     (scalex, scaley) = (None, None)
     if self.readbits(1):                # hasscale
       n = self.readbits(5)
-      scalex = self.readbits(n,1)/65536.0
-      scaley = self.readbits(n,1)/65536.0
+      scalex = self.readbits(n,1)/65536
+      scaley = self.readbits(n,1)/65536
     (rot0, rot1) = (None, None)
     if self.readbits(1):                # hasrotate
       n = self.readbits(5)
-      rot0 = self.readbits(n,1)/65536.0
-      rot1 = self.readbits(n,1)/65536.0
+      rot0 = self.readbits(n,1)/65536
+      rot1 = self.readbits(n,1)/65536
     (transx, transy) = (None, None)
     n = self.readbits(5)
     transx = self.readbits(n,1)
@@ -380,17 +365,16 @@ class SWFParser(DataParser):
 ##  FLVParser
 ##
 class FLVParser(DataParser):
-  
+
   def __init__(self, debug=0):
     DataParser.__init__(self, debug)
     self.tags = []
-    return
 
   def open(self, fname, header_only=False):
     DataParser.open(self, fname)
     self.parse_header()
     if header_only: return
-    print >>stderr, 'Scanning source flv file: %s...' % fname
+    stderr('Scanning source flv file: %s...' % fname)
     try:
       offset = self.readub32()          # always 0
       while 1:
@@ -403,7 +387,6 @@ class FLVParser(DataParser):
         self.fp.seek(offset + length + 4)  # skip PreviousTagSize
     except EOFError:
       pass
-    return
 
   def parse_header(self):
     (F,L,V,ver) = self.read(4)
@@ -412,8 +395,7 @@ class FLVParser(DataParser):
     flags = self.readui8()
     offset = self.readub32()
     if self.debug:
-      print >>stderr, 'Header:', (F,L,V,self.flv_version,flags)
-    return
+      stderr('Header:', (F,L,V,self.flv_version,flags))
 
   def get_tag(self, i):
     (tag, length, timestamp, offset) = self.tags[i]
@@ -432,7 +414,7 @@ class FLVParser(DataParser):
       else:
         i1 = i
     return (tag, length, timestamp, offset)
-  
+
 
 ##  SWFWriter
 ##
@@ -478,7 +460,6 @@ class DataWriter:
   def push(self):
     self.fpstack.append(self.fp)
     self.fp = StringIO()
-    return
 
   def pop(self):
     assert self.fpstack, 'empty fpstack'
@@ -488,55 +469,46 @@ class DataWriter:
     return data
 
   # fixed bytes write
-  
+
   def write(self, *args):
     for x in args:
       self.fp.write(x)
-    return
 
   def writeui8(self, *args):
     for x in args:
-      self.fp.write(chr(x))
-    return
+      self.fp.write(b'%c' % x)
   def writesi8(self, *args):
     for x in args:
       self.fp.write(pack('<b', x))
-    return
-  
+
   def writeui16(self, *args):
     for x in args:
       self.fp.write(pack('<H', x))
-    return 
   def writeub16(self, *args):
     for x in args:
       self.fp.write(pack('>H', x))
-    return 
-    
+
   def writesi16(self, *args):
     for x in args:
       self.fp.write(pack('<h', x))
-    return
-  
+
   def writeub24(self, *args):
     for x in args:
       self.fp.write(pack('>L', x)[1:4])
-    return
 
   def writeui32(self, *args):
     for x in args:
       self.fp.write(pack('<L', x))
-    return
   def writeub32(self, *args):
     for x in args:
       self.fp.write(pack('>L', x))
-    return
 
-  def writergb(self, (r,g,b)):
-    self.writeui8(r,g,b)
-    return
-  def writergba(self, (r,g,b,a)):
-    self.writeui8(r,g,b,a)
-    return
+  def writergb(self, rgb_color):
+    assert len(rgb_color) == 3
+    self.writeui8(*rgb_color)
+  def writergba(self,rgba_color):
+    assert len(rgba_color) == 4
+    self.writeui8(*rgba_color)
 
   # fixed bits write
   def writebits(self, bits, x, signed=False):
@@ -556,30 +528,29 @@ class DataWriter:
         # |-----8-bits-----|
         # |-bpos-|---bits----...
         # |      |----r----|
-        self.fp.write(chr(self.buff | (x >> (bits-r)))) # r < bits
+        self.fp.write(b'%c' % (self.buff | (x >> (bits-r)))) # r < bits
         self.buff = 0
         self.bpos = 0
         bits -= r                      # cut the upper r bits
         x &= (1<<bits)-1
-    return
-  
+
   def finishbits(self):
     if self.bpos:
-      self.fp.write(chr(self.buff))
+      self.fp.write(b'%c' % self.buff)
       self.buff = 0
       self.bpos = 0
-    return
-  
-  # variable length structure
-  
-  def writestring(self, s):
-    assert '\x00' not in s
-    self.write(s)
-    self.write('\x00')
-    return
 
-  def writerect(self, (xmin,xmax,ymin,ymax)):
+  # variable length structure
+
+  def writestring(self, s):
+    assert b'\x00' not in s
+    self.write(s)
+    self.write(b'\x00')
+
+  def writerect(self, dimension):
     '''NOT width and height!'''
+    assert len(dimension) == 4
+    (xmin,xmax,ymin,ymax) = dimension
     assert xmin <= xmax and ymin <= ymax
     n = needbits((xmin,xmax,ymin,ymax), 1)
     self.writebits(5, n)
@@ -588,9 +559,10 @@ class DataWriter:
     self.writebits(n, ymin, 1)
     self.writebits(n, ymax, 1)
     self.finishbits()
-    return
 
-  def writematrix(self, (scalex,scaley, rot0,rot1, transx,transy)):
+  def writematrix(self, matrix):
+    assert len(matrix) == 6
+    (scalex,scaley, rot0,rot1, transx,transy) = matrix
     if scalex != None:
       scalex = int(scalex*65536)
       scaley = int(scaley*65536)
@@ -619,7 +591,6 @@ class DataWriter:
     self.writebits(n, transx, 1)
     self.writebits(n, transy, 1)
     self.finishbits()
-    return
 
   def write_style(self, version, fillstyles, linestyles):
     # fillstyle
@@ -660,7 +631,6 @@ class DataWriter:
         self.writergba(color)
       else:
         self.writergb(color)
-    return
 
   # simple shape - up to only one fill/linestyle
   def write_shape(self, version, points, fillstyle=None, linestyle=None):
@@ -729,27 +699,22 @@ class DataWriter:
     self.writebits(1, 0) # styletype
     self.writebits(5, 0) # EOS
     self.finishbits()
-    return
 
   def start_tag(self):
     self.push()
-    return
-  
+
   def start_action(self):
     self.start_tag()
-    return
-  
+
   def do_action(self, action, length=None):
     assert action < 128 or length != None
     self.writeui8(action)
     if 128 <= action:
       self.writeui16(length)
-    return
-  
+
   def end_action(self):
     self.writeui8(0)                    # End
     self.end_tag(12)                    # DoAction
-    return
 
 
 ##  SWFWriter
@@ -771,7 +736,7 @@ class SWFWriter(DataWriter):
   def __init__(self, outfile, swf_version, rect, framerate, compression):
     if outfile == '-':
       raise VelueError('cannot write a SWF file to stdout.')
-    self.outfp = file(outfile, 'wb')
+    self.outfp = open(outfile, 'wb')
     self.swf_version = swf_version
     self.rect = rect
     self.framerate = framerate
@@ -782,17 +747,16 @@ class SWFWriter(DataWriter):
     self.objid = 0
     if self.compression:
       self.fp = StringIO()
-      self.fp.write('CWS%c' % self.swf_version)
+      self.fp.write(b'CWS%c' % self.swf_version)
     else:
       self.fp = self.outfp
-      self.fp.write('FWS%c' % self.swf_version)
+      self.fp.write(b'FWS%c' % self.swf_version)
     self.lenpos = self.fp.tell()
     self.writeui32(0) # dummy length
     self.writerect(rect)
     self.writeui16(int(framerate * 256))
     self.fcpos = self.fp.tell()
     self.writeui16(0) # dummy framecount
-    return
 
   def newid(self):
     self.objid += 1
@@ -815,7 +779,6 @@ class SWFWriter(DataWriter):
       data = self.fp.read()
       self.outfp.write(zlib.compress(data))
     self.outfp.close()
-    return
 
   def end_tag(self, tag, forcelong=False):
     data = self.pop()
@@ -825,19 +788,18 @@ class SWFWriter(DataWriter):
     else:
       self.writeui16(tag << 6 | len(data))
     self.write(data)
-    return
 
 
 ##  FLVWriter
 ##  Contributed by Luis Fernando <lfkpoa-69@yahoo.com.br>
 ##
 class FLVWriter(DataWriter):
-  
+
   def __init__(self, outfile, flv_version, rect, framerate):
     if outfile == '-':
       self.outfp = sys.stdout
     else:
-      self.outfp = file(outfile, 'wb')
+      self.outfp = open(outfile, 'wb')
     self.rect = rect
     self.flv_version = flv_version
     self.framerate = framerate
@@ -845,7 +807,7 @@ class FLVWriter(DataWriter):
     self.bpos = 0
     self.buff = 0
     self.fp = self.outfp
-    self.fp.write('FLV%c' % self.flv_version)
+    self.fp.write(b'FLV%c' % self.flv_version)
     self.writebits(5,0)
     self.writebits(1,0) # has audio
     self.writebits(1,0)
@@ -853,7 +815,6 @@ class FLVWriter(DataWriter):
     self.finishbits()
     self.writeub32(9) # dataoffset (header size) = 9
     self.writeub32(0) # previous tag size = 0
-    return
 
   def end_tag(self, tag, timestamp):
     data = self.pop()
@@ -863,11 +824,9 @@ class FLVWriter(DataWriter):
     self.writeui32(0)   # reserved
     self.write(data)
     self.writeub32(len(data)+11)  #size of this tag
-    return
 
   def write_file(self, framecount):
     self.outfp.close()
-    return
 
 
 # test

@@ -24,10 +24,10 @@
 ##
 
 import sys, re
-from movie import SWFInfo, MovieContainer
-from output import FLVVideoStream, MPEGVideoStream, SWFVideoStream, \
+from .movie import SWFInfo, MovieContainer
+from .output import FLVVideoStream, MPEGVideoStream, SWFVideoStream, \
      SWFShapeStream, ImageSequenceStream, MovieBuilder
-stderr = sys.stderr
+from .util import stderr
 
 
 # range2list: converts strings like "1,5-8" to [1,5,6,7,8].
@@ -67,7 +67,7 @@ def range2list(s, n0, n1, step=1):
 # reorganize
 def reorganize(info, stream, moviefiles, range_str='-',
                loop=True, seekbar=True,
-               step=1, kfinterval=0, 
+               step=1, kfinterval=0,
                mp3seek=True, mp3skip=0,
                debug=0):
   movie = MovieContainer(info)
@@ -99,7 +99,7 @@ def reorganize(info, stream, moviefiles, range_str='-',
 def main(argv):
   import getopt
   def usage():
-    print >>stderr, '''usage: %s
+    stderr('''usage: %s
     [-d] [-c] [-t type] [-f|-F frames] [-a mp3file] [-r framerate]
     [-S mp3sampleskip] [-C WxH+X+Y] [-B blocksize] [-K keyframe]
     [-R framestep] [-s scaling]
@@ -110,7 +110,7 @@ def main(argv):
       *.flv: generate a FLV movie.
       *.mpg: generate a MPEG movie.
       *.png|*.bmp: save snapshots of given frames as "X-nnn.png"
-      
+
     -d: debug mode.
     -c: compression.
     -t {swf5,swf7,flv,mpeg,png,bmp}: specify the output movie type.
@@ -127,7 +127,7 @@ def main(argv):
     -b: disable seekbar.
     -l: disable loop.
     -z: make the movie scalable.
-    ''' % argv[0]
+    ''' % argv[0])
     return 100
   try:
     (opts, args) = getopt.getopt(argv[1:], 'dr:o:t:cHa:S:C:B:K:f:F:R:s:blz')
@@ -154,14 +154,13 @@ def main(argv):
     elif k == '-t':
       v = v.lower()
       if v not in ('swf5','swf7','mpeg','mpg','flv','png','bmp','gif'):
-        print >>stderr, 'Invalid output type:', v
+        stderr('Invalid output type:', v)
         return usage()
       streamtype = v
     elif k == '-a':
-      fp = file(v, 'rb')
-      print >>stderr, 'Reading mp3 file: %s...' % v
-      info.reg_mp3blocks(fp)
-      fp.close()
+      with open(v, 'rb') as fp:
+        stderr('Reading mp3 file: %s...' % v)
+        info.reg_mp3blocks(fp)
     elif k == '-S':
       if v.endswith('s'):
         mp3skip = float(v[:-1])
@@ -171,7 +170,7 @@ def main(argv):
       try:
         info.set_clipping(v)
       except ValueError:
-        print >>stderr, 'Invalid clipping specification:', v
+        stderr('Invalid clipping specification:', v)
         return usage()
     elif k == '-B':
       blocksize = int(v)
@@ -199,10 +198,10 @@ def main(argv):
     elif k == '-z':
       info.set_scalable(True)
   if not args:
-    print >>stderr, 'Specify at least one input movie.'
+    stderr('Specify at least one input movie.')
     return usage()
   if not info.filename:
-    print >>stderr, 'Specify exactly one output file.'
+    stderr('Specify exactly one output file.')
     return usage()
   if not streamtype:
     v = info.filename
@@ -219,10 +218,10 @@ def main(argv):
     elif v.endswith('.flv'):
       streamtype = 'flv'
     else:
-      print >>stderr, 'Unknown stream type.'
+      stderr('Unknown stream type.')
       return 100
   if streamtype == 'mpeg' and not MPEGVideoStream:
-    print >>stderr, 'MPEGVideoStream is not supported.'
+    stderr('MPEGVideoStream is not supported.')
     return 100
   stream = None
   if streamtype == 'swf5':
@@ -238,11 +237,11 @@ def main(argv):
   try:
     return reorganize(info, stream, args, range_str,
                       loop=loop, seekbar=seekbar,
-                      step=step, kfinterval=kfinterval, 
+                      step=step, kfinterval=kfinterval,
                       mp3seek=mp3seek, mp3skip=mp3skip,
                       debug=debug)
-  except RangeError, e:
-    print >>stderr, 'RangeError:', e
+  except RangeError as e:
+    stderr('RangeError:', e)
     return 100
 
 if __name__ == "__main__": sys.exit(main(sys.argv))

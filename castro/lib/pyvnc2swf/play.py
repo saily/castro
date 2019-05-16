@@ -25,12 +25,13 @@
 
 import sys, os.path, subprocess
 import pygame
-from image import create_image_from_string_argb
-from movie import SWFInfo, MovieContainer
-from output import SWFScreen, MovieOutputStream, MovieBuilder
+from .image import create_image_from_string_argb
+from .movie import SWFInfo, MovieContainer
+from .output import SWFScreen, MovieOutputStream, MovieBuilder
+from .util import stderr
 lowerbound = max
 upperbound = min
-stderr = sys.stderr
+
 
 
 ##  PygameMoviePlayer
@@ -50,7 +51,7 @@ class PygameMoviePlayer(MovieOutputStream):
     return
 
   # MovieOuputStream methods
-  
+
   def open(self):
     MovieOutputStream.open(self)
     # open window
@@ -83,7 +84,9 @@ class PygameMoviePlayer(MovieOutputStream):
     #self.mp3_out = pymedia.audio.sound.Output(44100,2,pymedia.audio.sound.AFMT_S16_LE)
     return
 
-  def paint_frame(self, (images, othertags, cursor_info)):
+  def paint_frame(self, frame):
+    assert len(frame) == 3
+    (images, othertags, cursor_info) = frame
     for ((x0,y0), (w,h,data)) in images:
       self.screen.paint_image(x0, y0, w, h, data)
     if cursor_info:
@@ -191,7 +194,7 @@ class PygameMoviePlayer(MovieOutputStream):
             (root, ext) = os.path.splitext(self.info.filename)
             fname = '%s-%05d.bmp' % (root, self.current_frame)
             pygame.image.save(self.screen.buf, fname)
-            print >>stderr, 'Save:', fname
+            stderr('Save:', fname)
           elif e.key == 275: # right
             self.current_frame += 1
             self.seek(self.current_frame)
@@ -199,7 +202,7 @@ class PygameMoviePlayer(MovieOutputStream):
             self.current_frame -= 1
             self.seek(self.current_frame)
           else:
-            print >>stderr, 'Unknown key:', e
+            stderr('Unknown key:', e)
         elif e.type == pygame.QUIT:
           # window close attmpt
           loop = False
@@ -219,7 +222,7 @@ class PygameMoviePlayer(MovieOutputStream):
     self.builder.finish()
     self.close()
     return
-  
+
 
 # play
 def play(moviefiles, info, debug=0):
@@ -244,7 +247,7 @@ def play(moviefiles, info, debug=0):
 def main(argv):
   import getopt, re
   def usage():
-    print 'usage: %s [-d] [-r framerate] [-C WxH+X+Y] [-s scaling] file1 file2 ...' % argv[0]
+    print('usage: %s [-d] [-r framerate] [-C WxH+X+Y] [-s scaling] file1 file2 ...' % argv[0])
     return 100
   try:
     (opts, args) = getopt.getopt(argv[1:], 'dr:C:s:')
@@ -261,14 +264,14 @@ def main(argv):
     elif k == '-C':
       m = re.match(r'^(\d+)x(\d+)\+(\d+)\+(\d+)$', v)
       if not m:
-        print >>stderr, 'Invalid clipping specification:', v
+        stderr('Invalid clipping specification:', v)
         return usage()
       x = map(int, m.groups())
       info.clipping = (x[2],x[3], x[0],x[1])
     elif k == '-s':
       info.scaling = float(v)
   if not args:
-    print >>stderr, 'Specify at least one input movie.'
+    stderr('Specify at least one input movie.')
     return usage()
   return play(args, info, debug=debug)
 

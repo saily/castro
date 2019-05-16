@@ -24,15 +24,12 @@
 ##
 
 import sys, zlib, re
-from swf import SWFParser, FLVParser, CURSOR_DEPTH
-from mp3 import MP3Reader, MP3Storage
-from rfb import RFBMovieConverter
-from image import IMG_LOSSLESS, IMG_VIDEOPACKET
-import html_templates
-stderr = sys.stderr
-lowerbound = max
-upperbound = min
-
+from .swf import SWFParser, FLVParser, CURSOR_DEPTH
+from .mp3 import MP3Reader, MP3Storage
+from .rfb import RFBMovieConverter
+from .image import IMG_LOSSLESS, IMG_VIDEOPACKET
+from .util import stderr, upperbound, lowerbound
+from . import html_templates
 
 ##  SWFInfo
 ##
@@ -43,7 +40,7 @@ class SWFInfo:
   in a SWF file. The values of this object are changed
   as parsing goes on.
   """
-  
+
   def __init__(self, filename=None):
     self.filename = filename
     self.compression = None
@@ -56,7 +53,6 @@ class SWFInfo:
     self.height = None
     self.mp3 = None
     self.scalable = False
-    return
 
   def __repr__(self):
     return '<SWFInfo: filename=%r, compression=%r, clipping=%r, framerate=%r, scaling=%r, blocksize=%r, swf_version=%r, mp3=%r>' % \
@@ -71,26 +67,23 @@ class SWFInfo:
     if self.scaling:
       (w0,h0) = (int(w0*self.scaling), int(h0*self.scaling))
     if self.width != None and (self.width != w0 or self.height != h0):
-      print >>stderr, 'Warning: movie size already set: %dx%d' % (self.width, self.height)
+      stderr('Warning: movie size already set: %dx%d' % (self.width, self.height))
     elif self.width == None:
       (self.width, self.height) = (w0,h0)
-      print >>stderr, 'Output movie size: %dx%d' % (self.width, self.height)
+      stderr('Output movie size: %dx%d' % (self.width, self.height))
     if not self.framerate:
       self.framerate = 12.0
     if not self.blocksize:
       self.blocksize = 32
-    return
 
   def set_scalable(self, scalable):
     self.scalable = scalable
-    return
 
   def set_framerate(self, framerate):
     if self.framerate != None and self.framerate != framerate:
-      print >>stderr, 'Warning: movie framerate is overridden.'
-      return      
+      stderr('Warning: movie framerate is overridden.')
+      return
     self.framerate = float(framerate)
-    return
 
   def set_clipping(self, s):
     m = re.match(r'^(\d+)x(\d+)\+(\d+)\+(\d+)$', s)
@@ -98,7 +91,6 @@ class SWFInfo:
       raise ValueError('Invalid clipping spec: %r' % s)
     f = map(int, m.groups())
     self.clipping = (f[2],f[3], f[0],f[1])
-    return
   def get_clipping(self):
     if not self.clipping:
       raise ValueError('Clipping not set.')
@@ -107,7 +99,6 @@ class SWFInfo:
 
   def set_swf_version(self, swf_version):
     self.swf_version = swf_version
-    return
 
   def set_mp3header(self, isstereo, mp3samplerate, mp3sampleskip):
     if not self.mp3:
@@ -115,14 +106,12 @@ class SWFInfo:
     self.mp3.set_stereo(isstereo)
     self.mp3.set_sample_rate(mp3samplerate)
     self.mp3.set_initial_skip(mp3sampleskip)
-    print >>stderr, 'MP3: stereo=%s, samplerate=%d, initialskip=%d' % (isstereo, mp3samplerate, mp3sampleskip)
-    return
+    stderr('MP3: stereo=%s, samplerate=%d, initialskip=%d' % (isstereo, mp3samplerate, mp3sampleskip))
 
   def reg_mp3blocks(self, fp, length=None, nsamples=None, seeksamples=None):
     if not self.mp3:
       self.mp3 = MP3Storage()
     MP3Reader(self.mp3).read_mp3file(fp, length, nsamples, seeksamples)
-    return
 
   def write_html(self, seekbar=True, loop=True, filename=None):
     if not (self.swf_version and self.width and self.height):
@@ -133,26 +122,23 @@ class SWFInfo:
       outfname = filename.replace('.swf','.html')
     else:
       outfname = filename+'.html'
-    print >>stderr, 'Writing: %s...' % outfname
-    out = file(outfname, 'w')
-    html_templates.generate_html(out, filename, seekbar=seekbar, loop=loop)
-    out.close()
-    return
+    stderr('Writing: %s...' % outfname)
+    with open(outfname, 'w') as out:
+      html_templates.generate_html(out, filename, seekbar=seekbar, loop=loop)
 
-  
+
 ##  MovieContainer
 ##
 class MovieContainer:
-  
+
   """
   MovieContainer holds all frame images of a movie.
   """
-  
+
   def __init__(self, info):
     self.info = info
     self.nframes = 0
     self.parsers = []
-    return
 
   # get frame
   def get_frame(self, i):
@@ -163,7 +149,7 @@ class MovieContainer:
         break
       i -= n
     return (images, othertags, cursor_info)
-  
+
   def parse_vnc2swf(self, fname, read_mp3=False, debug=0):
     parser = VNC2SWF_Parser(self, read_mp3, debug=debug)
     parser.open(fname)
@@ -205,17 +191,15 @@ class VNC2SWF_Parser(SWFParser):
     self.movie = movie
     self.read_mp3 = read_mp3
     self.video1_cid = None
-    return
 
   def parse_header(self):
     SWFParser.parse_header(self)
     (x,width, y,height) = self.rect
-    print >>stderr, 'Input movie: version=%d, size=%dx%d, framerate=%dfps, frames=%d, duration=%.1fs.' % \
+    stderr('Input movie: version=%d, size=%dx%d, framerate=%dfps, frames=%d, duration=%.1fs.' % \
           (self.swf_version, width/20, height/20, self.framerate,
-           self.framecount, self.framecount/float(self.framerate))
+           self.framecount, self.framecount/float(self.framerate)))
     self.movie.info.set_framerate(self.framerate)
     self.movie.info.set_defaults(width/20, height/20)
-    return
 
   def parse_frame(self, i):
     self.image1 = {}
@@ -228,26 +212,23 @@ class VNC2SWF_Parser(SWFParser):
     return (self.images, self.othertags, (self.cursor_image, self.cursor_pos))
 
   def do_tag0(self, tag, length):
-    return
+    pass
 
   def do_unknown_tag(self, tag, length):
     data = self.read(length)
     self.othertags.append((tag, data))
-    return
-  
+
   def do_tag1(self, tag, length):
     # ShowFrame
     if self.debug:
-      print >>stderr, 'ShowFrame'
-    return
-  
+      stderr('ShowFrame')
+
   def do_tag9(self, tag, length):
     # SetBackgroundColor
     bgcolor = self.readrgb()
     if self.debug:
-      print >>stderr, 'BGColor:', bgcolor
-    return
-  
+      stderr('BGColor:', bgcolor)
+
   def do_tag20(self, tag, length):
     # DefineBitsLossless
     cid = self.readui16()
@@ -262,12 +243,12 @@ class VNC2SWF_Parser(SWFParser):
     if fmt == 5: # RGB or RGBA
       data = self.read(length)
       if self.debug:
-        print >>stderr, 'DefineBitsLossless:', cid, fmt, width, height, len(data)
+        stderr('DefineBitsLossless:', cid, fmt, width, height, len(data))
       self.image1[cid] = (width, height, (IMG_LOSSLESS, data))
     return
   # DefineBitsLossless2
   do_tag36 = do_tag20
-  
+
   def do_tag32(self, tag, length):
     # DefineShape3
     sid = self.readui16()
@@ -277,9 +258,8 @@ class VNC2SWF_Parser(SWFParser):
     if fillstyles:
       cid = fillstyles[0][3]
       if self.debug:
-        print >>stderr, 'Shape', sid, cid, rect, shape, fillstyles, linestyles
+        stderr('Shape', sid, cid, rect, shape, fillstyles, linestyles)
       self.shape1 = (sid, cid)
-    return
 
   def do_tag26(self, tag, length):
     # PlaceObject2
@@ -299,7 +279,7 @@ class VNC2SWF_Parser(SWFParser):
     #assert not (flags & 64)
     #assert not (flags & 128)
     if self.debug:
-      print >>stderr, 'Place', flags, depth, sid, (scalex,scaley, rot0,rot1, transx,transy)
+      stderr('Place', flags, depth, sid, (scalex,scaley, rot0,rot1, transx,transy))
     if depth == CURSOR_DEPTH:
       # this is a cursor sprite!
       if sid:
@@ -319,19 +299,17 @@ class VNC2SWF_Parser(SWFParser):
         del self.image1[cid]
         self.images.append(((transx/20, transy/20), data))
         self.shape1 = None
-    return
-  
+
   def do_tag28(self, tag, length):
     # RemoveObject2
     depth = self.readui16()
     if self.debug:
-      print >>stderr, 'RemoveObject', depth
-    return
+      stderr('RemoveObject', depth)
 
   def scan_tag60(self, tag, length):
     # DefineVideoStream
     if self.video1_cid:
-      print >>stderr, 'DefineVideoStream already appeared.'
+      stderr('DefineVideoStream already appeared.')
       return
     cid = self.readui16()
     frames = self.readui16()
@@ -342,15 +320,15 @@ class VNC2SWF_Parser(SWFParser):
     if codec == 3:
       self.video1_cid = cid
       if self.debug:
-        print >>stderr, 'DefineVideoStream', cid, frames, width, height, flags, codec
-    return
+        stderr('DefineVideoStream', cid, frames, width, height, flags, codec)
   def do_tag60(self, tag, length):
-    return
-  
+    pass
+
   def do_tag61(self, tag, length):
     # VideoFrame
     stream_id = self.readui16()
-    if self.video1_cid != stream_id: return # Video ID does not match
+    if self.video1_cid != stream_id:
+      return # Video ID does not match
     framenum = self.readui16()
     self.setbuff()
     (frametype, codecid) = self.readbits(4), self.readbits(4)
@@ -360,7 +338,7 @@ class VNC2SWF_Parser(SWFParser):
     blockwidth = (blockwidth+1)*16
     blockheight = (blockheight+1)*16
     if self.debug:
-      print >>stderr, 'VideoFrame', framenum, frametype, ':',  blockwidth, imagewidth, blockheight, imageheight
+      stderr('VideoFrame', framenum, frametype, ':',  blockwidth, imagewidth, blockheight, imageheight)
     hblocks = (imagewidth+blockwidth-1)/blockwidth
     vblocks = (imageheight+blockheight-1)/blockheight
     for y in xrange(0, vblocks):
@@ -376,8 +354,7 @@ class VNC2SWF_Parser(SWFParser):
             h += y0
             y0 = 0
           self.images.append( ((x0,y0), (w,h,(IMG_VIDEOPACKET,data))) )
-    return
-  
+
   def scan_tag18(self, tag, length):
     # SoundStreamHead
     if not self.read_mp3: return
@@ -400,23 +377,24 @@ class VNC2SWF_Parser(SWFParser):
     latseek = self.readui16()
     self.movie.info.set_mp3header(streamstereo, samplerate, latseek)
     if self.debug:
-      print >>stderr, 'SoundStreamHeader', flags1, flags2, avgsamplecount, latseek
-    return
+      stderr('SoundStreamHeader', flags1, flags2, avgsamplecount, latseek)
+
   def do_tag18(self, tag, length):
-    return
-  
+    pass
+
   def scan_tag19(self, tag, length):
     # SoundStreamBlock
-    if not self.read_mp3: return
+    if not self.read_mp3:
+      return
     nsamples = self.readui16()
     seeksamples = self.readsi16()
     self.movie.info.reg_mp3blocks(self.fp, length-4, nsamples, seeksamples)
     if self.debug:
-      print >>stderr, 'SoundStreamBlock', nsamples, seeksamples
-    return
+      stderr('SoundStreamBlock', nsamples, seeksamples)
+
   def do_tag19(self, tag, length):
-    return
-  
+    pass
+
 
 ##  FLVMovieParser
 ##
@@ -427,7 +405,6 @@ class FLVMovieParser(FLVParser):
     self.movie = movie
     self.read_mp3 = read_mp3
     self.framerate = 12
-    return
 
   def open(self, fname):
     FLVParser.open(self, fname)
@@ -448,7 +425,6 @@ class FLVMovieParser(FLVParser):
         tagids = []
       tagids.append(tagid)
     self.frames.append(tagids)
-    return
 
   def parse_frame(self, i):
     self.images = []
@@ -469,7 +445,7 @@ class FLVMovieParser(FLVParser):
     blockwidth = (blockwidth+1)*16
     blockheight = (blockheight+1)*16
     if self.debug:
-      print >>stderr, 'VideoFrame', framenum, frametype, ':',  blockwidth, imagewidth, blockheight, imageheight
+      stderr('VideoFrame', framenum, frametype, ':',  blockwidth, imagewidth, blockheight, imageheight)
     hblocks = (imagewidth+blockwidth-1)/blockwidth
     vblocks = (imageheight+blockheight-1)/blockheight
     for y in xrange(0, vblocks):
@@ -485,11 +461,10 @@ class FLVMovieParser(FLVParser):
             h += y0
             y0 = 0
           self.images.append( ((x0,y0), (w,h,(IMG_VIDEOPACKET,data))) )
-    return
 
 
 # main
 if __name__ == '__main__':
   info = SWFInfo()
-  movie = MovieContainer(info).parse_vnc2swf(sys.argv[1], read_mp3=True, debug=1)
-  print movie.nframes, info
+  movie = MovieContainer(info).parse_vnc2swf(sys.argv[1], read_mp3=True, debug=0)
+  print(movie.nframes, info)

@@ -5,3 +5,6 @@
 build
 dist
 castro.egg-info
+__pycache__
+*.eggs
+/castro-messageboard-recording_should_continue.txt
